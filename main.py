@@ -65,6 +65,7 @@ class SeatSelection:
             f"E:{self.seats[f'{row}E']} "
             f"F:{self.seats[f'{row}F']}"
         )
+
    #define function that will show the interface of searching among seats
     def priority_searching(self):
         print(
@@ -78,7 +79,21 @@ class SeatSelection:
         elif search == "2":
             self.aisle_adjacent_seats()
         elif search == "3":
-            self.row_seats(int(input("Enter your row number: ")))
+            while True:
+                row = input("Enter row number (1-80): ").strip()
+
+                if not row.isdigit():
+                    print("Please enter a number.")
+                    continue
+
+                row = int(row)
+
+                if 1 <= row <= 80:
+                    self.row_seats(row)
+                    break
+                else:
+                    print("Row must be between 1 and 80.")
+
         else:
             print("Enter a valid choice!")
 
@@ -101,7 +116,7 @@ class Booking:
    #define function that checks avaibility of seats
     def check_availability(self):
         print("Check seats availability")
-        self.search.interface_seats() #calling function 
+        self.search.interface_seats() #calling function
         self.seats.show_seats()  # calling the function
         seat_number = input("Enter seat number: ").strip().upper()
 
