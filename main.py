@@ -1,21 +1,125 @@
 """Sofware for Apache airlines"""
+import sqlite3 #importing sqlite3 for connecting python with sqlite code
+import string #importing string for checking the string variables
+import random #importing random for taking random alphanumerics for reference number
+
+#class for delivering process with database
+class Database:
+    #initializing connection with database and python program.
+    def __init__(self):
+        self.conn = sqlite3.connect("airline.db")
+        self.cursor = self.conn.cursor()
+        self.create_table()
+   #define function for creating table
+    def create_table(self):
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bookings (
+            booking_ref TEXT PRIMARY KEY,
+            passport TEXT,
+            first_name TEXT,
+            surname TEXT,
+            seat_row INTEGER,
+            seat_col TEXT
+        );
+        """)
+        self.conn.commit()
+    #define function for adding new data into database
+    def insert_booking(self, booking_ref, passport, first_name, surname, seat_row, seat_col):
+        self.cursor.execute("""
+        INSERT INTO bookings (booking_ref,passport, first_name, surname, seat_row, seat_col)
+                            VALUES (?, ?, ?, ?, ?, ?)""", (booking_ref, passport, first_name, surname, seat_row, seat_col)
+        )
+        self.conn.commit()
+    #define function for deleting the booked data from dataset
+    def delete_booking(self, booking_ref):
+        self.cursor.execute("""
+        DELETE FROM bookings WHERE booking_ref=?""",(booking_ref,))
+        self.conn.commit()
+
+    # define function that returns exisitng reference numbers
+    def references(self):
+        self.cursor.execute("""
+        SELECT booking_ref FROM bookings;
+        """)
+        exisitng_refs={row[0] for row in self.cursor.fetchall()}
+        return exisitng_refs
+    #define function that returns the booked seats data
+    def booking_status(self):
+        self.cursor.execute("SELECT seat_row, seat_col FROM bookings")
+        rows=self.cursor.fetchall()
+        booked_seats=[]
+        for seat_row,seat_col in rows:
+            seat_id=str(seat_row)+seat_col
+            booked_seats.append(seat_id)
+        return booked_seats
+    #define function that return reference number of booked seats based on seatnumber
+    def reference_booked(self, seatnum):
+        row=int(seatnum[:-1])
+        col=seatnum[-1]
+        self.cursor.execute("""
+        SELECT booking_ref FROM bookings WHERE seat_row=? AND seat_col=?""" ,(row,col))
+        ref=self.cursor.fetchone()
+        return ref
+    #define function that returns users details from dataset according to booking reference
+    def user_details(self,booking_ref):
+        self.cursor.execute("""
+        SELECT passport, first_name,surname FROM bookings WHERE booking_ref=?""",(booking_ref,))
+        name=self.cursor.fetchone()
+        if name is None:
+            return None
+        return name[0],name[1], name[2]
+    #define function that returns passport detail of seat owner who booked
+    def user_passport(self,booking_ref):
+        self.cursor.execute("""
+        SELECT passport FROM bookings WHERE booking_ref=?""",(booking_ref,))
+        passport=self.cursor.fetchone()
+        if passport is None:
+            return None
+        return passport[0]
+
+    #define function that closes the connection with dataset
+    def close(self):
+        self.conn.close()
+
+#define class for generating reference number
+class Reference:
+    #define functionf or creating unique reference numbers
+    def generate_unique_id(self,existing_refs):
+        self.existing_refs=existing_refs
+        #string.ascii_letters gives Capital letters
+        #string.digits  gives all digital number (0,1,2,3...9)
+        characters = string.ascii_letters + string.digits
+
+        while True:
+            reference="".join(random.choices(characters, k=8))
+
+            if reference not in self.existing_refs:
+                return reference
 
 #class for creating seats and showing them
 class Seats:
     def __init__(self):
         self.seats={} #initializing seats
+        self.database=Database()
 
     #define function that creates seats
     def create_seats(self):
-        rows=["A","B","C","D","E","F"] #rows for identifying seats
-        for row in rows:
-            for col in range(1,81): # iterating for demanded seats
-                seat_id=f"{col}{row}"
-                if row in ("D","E","F") and col>=77:
+        cols=["A","B","C","D","E","F"] #rows for identifying seats
+        for col in cols:
+            for row in range(1,81): # iterating for demanded seats
+                seat_id=f"{row}{col}"
+                if col in ("D","E","F") and row>=77:
                     self.seats[seat_id]="S"
                 else:
                     self.seats[seat_id]="F"
+        # return self.seats
 
+     # checking the already booked seats in the database
+    def check_bookedSeats(self):
+        bookedSeats = self.database.booking_status()
+        for seat in self.seats:
+            if seat in bookedSeats:
+                self.seats[seat] = "R"
         return self.seats
 
     #function to show seats for user
@@ -44,7 +148,7 @@ class SeatSelection:
                 f"{seat:2}"
                 f" {self.seats[f'{seat}A']}     {self.seats[f'{seat}F']}"
             )
-    #define fucntion that will show seats located in the middle
+    #define function that will show seats located in the middle
     def aisle_adjacent_seats(self):
         print("AISLE ADJACENT SEATS")
         print(" C     D")
@@ -81,7 +185,7 @@ class SeatSelection:
         elif search == "3":
             while True:
                 row = input("Enter row number (1-80): ").strip()
-
+                #checking if input is digit
                 if not row.isdigit():
                     print("Please enter a number.")
                     continue
@@ -111,7 +215,8 @@ class SeatSelection:
 class Booking:
     def __init__(self, seats):
         self.seats=seats #loading seats
-        self.booked_seats = []
+        self.database=Database()
+        self.reference=Reference()
         self.search = SeatSelection(self.seats.seats) #calling a class
    #define function that checks avaibility of seats
     def check_availability(self):
@@ -126,8 +231,8 @@ class Booking:
             print(f" {seat_number} is not available!")
         elif self.seats.seats[seat_number]=="F":
             print(f" {seat_number} is available ")
-
-
+        elif self.seats.seats[seat_number]=="R":
+            print(f" {seat_number} is not available ")
         else:
             print("Enter a valid seat number!")
 
@@ -135,7 +240,8 @@ class Booking:
     def create_booking(self):
         print("WELCOME TO BOOKING PAGE:")
         print("You can select your seat by checking its availability from seats below")
-        while True :
+        existing_ref=self.database.references()
+        while True:
             self.seats.show_seats()# calling the function
             seat_number = input("Enter your seat number: ").strip().upper()
             if seat_number not in self.seats.seats:  # checking for validity of seat number
@@ -144,13 +250,22 @@ class Booking:
             elif self.seats.seats[seat_number] == "S":
                 print("Please select another seat!")
             elif self.seats.seats[seat_number] == "F":
+                first_name = input("Enter your first name: ")
+                last_name = input("Enter your last name: ")
+                passport = input("Enter your passport number: ")
                 assure = input(f"Do you want to book {seat_number} seat? (y/n): ").lower().strip()
+
                 if assure == "y":
+                    seat_row=int(seat_number[:-1])
+                    seat_col=seat_number[-1]
+                    booking_ref=self.reference.generate_unique_id(existing_ref)
+                    self.database.insert_booking(booking_ref, passport, first_name, last_name,seat_row,seat_col)
                     self.seats.seats[seat_number] = "R"
-                    self.booked_seats.append(seat_number)
                     print("Booking successful!")
+
                 else:
                     print("Booking process cancelled!")
+
             else:
                 print("Please select another seat!")
             con=input("Do you want to book another seat? (y/n): ").lower().strip()
@@ -163,17 +278,29 @@ class Booking:
     #define function that will free the booked seat
     def free_seat(self):
         print("FREEING SEAT!")
+
         seat_number_f=input("Enter your seat number: ").strip().upper()
+
+
         if seat_number_f not in self.seats.seats:
             print("Invalid seat number. Please try again.")
         elif self.seats.seats[seat_number_f]=="R":
-            assurance=input(f"Do you want to free {seat_number_f} seat? (y/n): ").lower().strip()
-            if assurance=="y":
-                self.seats.seats[seat_number_f] = "F" #freeing the seat
-                self.booked_seats.remove(seat_number_f) #freeing from the booked list
-                print(f" {seat_number_f} is freed successful!")
+            ref = self.database.reference_booked(seat_number_f)[0]  # it returns tuple (ref,) so [0] can give only ref part.
+            user_passport = input("Enter your passport number: ")
+            if user_passport==self.database.user_passport(ref):
+                 assurance = input(f"Do you want to free {seat_number_f} seat? (y/n): ").lower().strip()
+                 if assurance == "y":
+                     ref = self.database.reference_booked(seat_number_f)[
+                        0]  # it provides with ref part only instead of tuple like  (ref,)
+                     self.database.delete_booking(ref)
+                     self.seats.seats[seat_number_f] = "F"  # freeing the seat
+                     print(f" {seat_number_f} is freed successful!")
+                 else:
+                     print("Process cancelled!")
+
             else:
-                print("Process cancelled!")
+                print("Passport is not valid!")
+
 
         else:
             print("The process cancelled, try later!")
@@ -181,8 +308,17 @@ class Booking:
     def show_booking_status(self):
         print("Booking Status")
         print("Booked seats:")
-        for spot in self.booked_seats:
-            print(f"{spot}")
+
+        for spot in self.database.booking_status():
+            ref = self.database.reference_booked(spot)[0]  # it returns tuple (ref,) so [0] can give only ref part.
+            passport, first, last = self.database.user_details(ref)
+            print(f"seat: {spot} \n",
+                  f"  First Name: {first} \n",
+                  f"  Last Name: {last} \n",
+                  f"  Reference number: {ref} \n",
+                  f"  Password: {passport} \n")
+
+
 
 
 
@@ -191,7 +327,9 @@ class Booking:
 class Interface:
     def __init__(self):
         self.seats=Seats() #initializing instance
-        self.seats.create_seats() #creating the seats
+        self.seats.create_seats()#creating the seats
+        self.seats.check_bookedSeats()
+        self.database=Database()
         self.booking=Booking(self.seats) #initializing instance
     #define function that will keep running the application
     def application(self):
@@ -216,6 +354,7 @@ class Interface:
                 self.booking.show_booking_status()
             elif user == "5":
                 print("Thank you for choosing Airlines")
+                self.database.close()
                 break
             else:
                 print("Please enter a valid choice!")
@@ -223,7 +362,7 @@ class Interface:
 
 
 
-app=Interface() #intializing instance for running
+app=Interface() #initializing instance for running
 app.application() #running the function
 
 
